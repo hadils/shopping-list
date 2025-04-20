@@ -1,0 +1,68 @@
+#+title: Design
+
+This is a shopping list server for a mobile app. Designed to be shared by several people.
+1. Items in the list have one or more tags
+   Tags indicate which stores to look for stuff
+1. Selecting a tag will select all items with that tag
+1. Once an item is marked "bought", store the date
+1. View lists of items with a date
+1. Items appear in a list
+1. Manage multiple lists
+   1. View of all lists
+1. Adding an item
+   1. Search previous items or add a new one
+   1. Items remember the tags and the date last bought
+
+Everyone using the same app is notified when changes are made. Need a way for list creator to share
+lists with others.
+
+
+
+* Actions
+1. Create list
+2. Share list
+3. Add item to list
+   1. Create item
+      Search bar to type in a new item or select and previous item
+      Show the date it was last bought
+   1. Tag item
+1. Mark item bought -- remember the date
+1. Search for items
+   1. By item name (want to search across misspellings)
+   1. By tag
+   1. Search by list
+   1. Search globally (over all lists)
+
+
+* Data
+** List
+- ID: UUID
+- Name: String
+- Author: String
+- Subscribers: Set of String
+- Items: List of Item
+- Archive: List of Item
+** Item
+- ID: UUID
+- Description: String
+- Notes: String, optional
+- Quantity: Integer, optional
+- Tags: Set of Tag
+- Last Bought: Date
+** Tag: String (all lowercase keep track of unique tags)
+
+* Events
+1. create list (list-id, name, author)
+1. share list with person (list-id, subscriber)
+1. add item to list (list-id, (item-id, description, notes, quantity, tags))
+1. mark item bought (item-id, last-bought)
+
+* Queries
+1. Get lists
+1. Get list by list-id
+1. Get list items
+1. Get list items by tag
+1. Get list items by name
+1. Get all items by tag
+1. Get all items by name
+1. Get item by item-id
