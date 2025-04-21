@@ -1,6 +1,13 @@
 {:paths ["src" "test"]
- :deps {com.rpl/rama {:mvn/version "1.0.0"}
-        org.clojure/core.match {:mvn/version "1.1.0"}}
+ :deps
+ {com.rpl/rama {:mvn/version "1.0.0"}
+  org.clojure/core.match {:mvn/version "1.1.0"}
+  com.nextjournal/beholder {:mvn/version "1.0.2"}
+  io.github.noahtheduke/lazytest {:mvn/version "1.6.1"}}
+
+ :aliases
+ {:test
+  {:main-opts ["-m" "lazytest.main"]}}
 
  :mvn/repos
  {"nexus-releases" {:url "https://nexus.redplanetlabs.com/repository/maven-public-releases"}}}

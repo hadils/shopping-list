@@ -1,7 +1,8 @@
 (ns shopping-list.module-test
   (:require
    [shopping-list.module :as sut]
-   [clojure.test :as t]
+   [lazytest.core :as lt :refer [defdescribe describe expect it expect-it
+                                 before before-each after after-each around]]
    [com.rpl.rama :as r]
    [com.rpl.rama.path :as rp]
    [com.rpl.rama.test :as rtest]
@@ -18,50 +19,288 @@
 
 (def ipc (atom nil))
 
-(defn test-cluster [f]
-  (reset! ipc (rtest/create-ipc))
-  (launch! @ipc)
-  (f)
-  (.close @ipc))
+#_(defn test-cluster [f]
+    (reset! ipc (rtest/create-ipc))
+    (launch! @ipc)
+    (f)
+    (.close @ipc))
 
-(t/use-fixtures :each test-cluster)
+#_(t/use-fixtures :each test-cluster)
 
-(defn depot [name]
-  (r/foreign-depot @ipc (r/get-module-name sut/Module) name))
+(defn depot [ipc name]
+  (r/foreign-depot ipc (r/get-module-name sut/Module) name))
 
-(defn pstate [name]
-  (r/foreign-pstate @ipc (r/get-module-name sut/Module) name))
+(defn pstate [ipc name]
+  (r/foreign-pstate ipc (r/get-module-name sut/Module) name))
 
-(defn query [name]
-  (r/foreign-query @ipc (r/get-module-name sut/Module) name))
+(defn query [ipc name]
+  (r/foreign-query ipc (r/get-module-name sut/Module) name))
 
-(t/deftest list-test
-  (let [shopping-list-depot (depot "*shopping-list-depot")
-        shopping-lists (pstate "$$shopping-lists")
+(defdescribe module-test
+  (let [ipc (volatile! nil)]
+    (describe "shopping list"
+              {:context [(around [f]
+                                 (println "before")
+                                 (vreset! ipc (rtest/create-ipc))
+                                 (launch! @ipc)
+                                 (f)
+                                 (println "after")
+                                 (.close @ipc))]}
+              (it "should create a shopping list"
+                  (let [shopping-list-depot (depot @ipc "*shopping-list-depot")
+                        shopping-lists (pstate @ipc "$$shopping-lists")
+                        {list-id "shopping-list"} (r/foreign-append!
+                                                   shopping-list-depot
+                                                   (sut/map->ShoppingList
+                                                    {:list-id (random-uuid)
+                                                     :name "Hadil's List"
+                                                     :author "Hadil"}))]
+                    (expect
+                     (= {:list-id list-id
+                         :name "Hadil's List"
+                         :author "Hadil"
+                         :subscribers #{}}
+                        (r/foreign-select-one [(rp/keypath list-id)] shopping-lists)))))
+              (it "should modify an existing shopping list"
+                  (let [shopping-list-depot (depot @ipc "*shopping-list-depot")
+                        shopping-lists (pstate @ipc "$$shopping-lists")
+                        {list-id "shopping-list"} (r/foreign-append!
+                                                   shopping-list-depot
+                                                   (sut/map->ShoppingList
+                                                    {:list-id (random-uuid)
+                                                     :name "Hadil's List"
+                                                     :author "Hadil"}))]
+                    (r/foreign-append!
+                     shopping-list-depot
+                     (sut/->ShoppingListEdits list-id [(sut/name-edit "Julia's List") (sut/author-edit "Julia")]))
+                    (expect
+                     (= {:list-id list-id
+                         :name "Julia's List"
+                         :author "Julia"
+                         :subscribers #{}}
+                        (r/foreign-select-one [(rp/keypath list-id)] shopping-lists)))
+                    (r/foreign-append!
+                     shopping-list-depot
+                     (sut/->AddSubscriber list-id "Hadil"))
+                    (r/foreign-append!
+                     shopping-list-depot
+                     (sut/add-subscriber list-id "Emilee"))
+                    (expect
+                     (= {:list-id list-id
+                         :name "Julia's List"
+                         :author "Julia"
+                         :subscribers #{"Emilee" "Hadil"}}
+                        (r/foreign-select-one [(rp/keypath list-id)] shopping-lists)))
+                    (r/foreign-append!
+                     shopping-list-depot
+                     (sut/remove-subecriber list-id "Emilee"))
+                    (expect
+                     (= {:list-id list-id
+                         :name "Julia's List"
+                         :author "Julia"
+                         :subscribers #{"Hadil"}}
+                        (r/foreign-select-one [(rp/keypath list-id)] shopping-lists)))))
+              (it "should delete a shopping list"
+                  (let [shopping-list-depot (depot @ipc "*shopping-list-depot")
+                        shopping-lists (pstate @ipc "$$shopping-lists")
+                        {list-id "shopping-list"} (r/foreign-append!
+                                                   shopping-list-depot
+                                                   (sut/map->ShoppingList
+                                                    {:list-id (random-uuid)
+                                                     :name "Hadil's List"
+                                                     :author "Hadil"}))]
+                    (r/foreign-append!
+                     shopping-list-depot
+                     (sut/->DeleteShoppingList list-id))
+                    (expect
+                     (= [nil] (r/foreign-select [(rp/keypath list-id)] shopping-lists))))))
 
-        ack (r/foreign-append! shopping-list-depot
-                               (sut/map->ShoppingList
-                                {:list-id (random-uuid)
-                                 :name "Hadil's List"
-                                 :author "Hadil Sabbagh"}))
-        {list-id "shopping-list"} ack
-        result (r/foreign-select-one [(rp/keypath list-id)] shopping-lists)]
-    (t/is (match [result]
-                 [{:list-id list-id :name "Hadil's List" :author "Hadil Sabbagh" :subscribers #{}}] true
-                 :else false))
-    (let [edits (sut/->ShoppingListEdits list-id [(sut/name-edit "Julia's List")
-                                                  (sut/author-edit "Julia")])]
-      (r/foreign-append! shopping-list-depot edits)
-      (t/is (match [(r/foreign-select-one [(rp/keypath list-id)] shopping-lists)]
-                   [{:list-id list-id :name "Julia's List" :author "Julia" :subscribers #{}}] true
-                   :else false))
-      (r/foreign-append! shopping-list-depot (sut/add-subscriber list-id "Hadil"))
-      (t/is (match [(r/foreign-select-one [(rp/keypath list-id)] shopping-lists)]
-                   [{:list-id list-id :name "Julia's List" :author "Julia" :subscribers #{"Hadil"}}] true
-                   :else false))
-      (r/foreign-append! shopping-list-depot (sut/remove-subecriber list-id "Hadil"))
-      (t/is (match [(r/foreign-select-one [(rp/keypath list-id)] shopping-lists)]
-                   [{:list-id list-id :name "Julia's List" :author "Julia" :subscribers #{}}] true
-                   :else false))
-      (r/foreign-append! shopping-list-depot (sut/->DeleteShoppingList list-id))
-      (t/is (nil? (r/foreign-select-one [(rp/keypath list-id)] shopping-lists))))))
+    (describe "item"
+              {:context [(around [f]
+                                 (println "before")
+                                 (vreset! ipc (rtest/create-ipc))
+                                 (launch! @ipc)
+                                 (f)
+                                 (println "after")
+                                 (.close @ipc))]}
+              (it "should not create an item if the shopping list does not exist"
+                  (let [item-depot (depot @ipc "*item-depot")
+                        {item-id "shopping-list"} (r/foreign-append!
+                                                   item-depot
+                                                   (sut/map->Item
+                                                    {:list-id (random-uuid)
+                                                     :item-id (random-uuid)}))]
+                    (expect
+                     (nil? item-id))))
+              (it "should create an item for an existing shopping list"
+                  (let [shopping-list-depot (depot @ipc "*shopping-list-depot")
+                        item-depot (depot @ipc "*item-depot")
+                        items (pstate @ipc "$$items")
+                        {list-id "shopping-list"} (r/foreign-append!
+                                                   shopping-list-depot
+                                                   (sut/map->ShoppingList
+                                                    {:list-id (random-uuid)}))
+                        {item-id "shopping-list"} (r/foreign-append!
+                                                   item-depot
+                                                   (sut/map->Item
+                                                    {:list-id list-id
+                                                     :item-id (random-uuid)
+                                                     :description "Food"
+                                                     :notes "Delicious"
+                                                     :quantity 5}))]
+                    (expect
+                     (= {:list-id list-id
+                         :item-id item-id
+                         :description "Food"
+                         :notes "Delicious"
+                         :quantity 5
+                         :tags #{}}
+                        (r/foreign-select-one [(rp/keypath item-id)] items)))))
+              (it "should modify an existing item"
+                  (let [shopping-list-depot (depot @ipc "*shopping-list-depot")
+                        item-depot (depot @ipc "*item-depot")
+                        items (pstate @ipc "$$items")
+                        {list-id "shopping-list"} (r/foreign-append!
+                                                   shopping-list-depot
+                                                   (sut/map->ShoppingList
+                                                    {:list-id (random-uuid)}))
+                        {item-id "shopping-list"} (r/foreign-append!
+                                                   item-depot
+                                                   (sut/map->Item
+                                                    {:list-id list-id
+                                                     :item-id (random-uuid)
+                                                     :description "Food"
+                                                     :notes "Delicious"
+                                                     :quantity 5}))
+                        {status "shopping-list"} (r/foreign-append!
+                                                  item-depot
+                                                  (sut/->ItemEdits item-id [(sut/description-edit "More Food")
+                                                                            (sut/quantity-edit 10)]))]
+                    (expect (#{:success} status))
+                    (expect
+                     (= {:list-id list-id
+                         :item-id item-id
+                         :description "More Food"
+                         :notes "Delicious"
+                         :quantity 10
+                         :tags #{}}
+                        (r/foreign-select-one [(rp/keypath item-id)] items)))))
+              (it "will not modify an item that doesn't exist"
+                  (let [item-depot (depot @ipc "*item-depot")]
+                    (expect
+                     (empty? (r/foreign-append! item-depot
+                                                (sut/->ItemEdits (random-uuid) [(sut/description-edit "won't work")]))))))
+              (it "should add and remove tags from an existing item"
+                  (let [shopping-list-depot (depot @ipc "*shopping-list-depot")
+                        item-depot (depot @ipc "*item-depot")
+                        items (pstate @ipc "$$items")
+                        {list-id "shopping-list"} (r/foreign-append!
+                                                   shopping-list-depot
+                                                   (sut/map->ShoppingList
+                                                    {:list-id (random-uuid)}))
+                        {item-id "shopping-list"} (r/foreign-append!
+                                                   item-depot
+                                                   (sut/map->Item
+                                                    {:list-id list-id
+                                                     :item-id (random-uuid)
+                                                     :description "Food"
+                                                     :notes "Delicious"
+                                                     :quantity 5}))]
+                    (expect (#{:success} (get (r/foreign-append!
+                                               item-depot
+                                               (sut/->AddTags item-id ["#costco" "#whole_foods"]))
+                                              "shopping-list")))
+                    (expect
+                     (= {:list-id list-id
+                         :item-id item-id
+                         :description "Food"
+                         :notes "Delicious"
+                         :quantity 5
+                         :tags #{"#whole_foods" "#costco"}}
+                        (r/foreign-select-one [(rp/keypath item-id)] items)))
+                    (expect (#{:success} (get (r/foreign-append!
+                                               item-depot
+                                               (sut/->RemoveTags item-id ["#costco"]))
+                                              "shopping-list")))
+                    (expect
+                     (= {:list-id list-id
+                         :item-id item-id
+                         :description "Food"
+                         :notes "Delicious"
+                         :quantity 5
+                         :tags #{"#whole_foods"}}
+                        (r/foreign-select-one [(rp/keypath item-id)] items)))))
+              (it "should not add or remove tags from an item that doesn't exist"
+                  (let [shopping-list-depot (depot @ipc "*shopping-list-depot")
+                        item-depot (depot @ipc "*item-depot")
+                        items (pstate @ipc "$$items")
+                        {list-id "shopping-list"} (r/foreign-append!
+                                                   shopping-list-depot
+                                                   (sut/map->ShoppingList
+                                                    {:list-id (random-uuid)}))
+                        item-id (random-uuid)]
+
+                    (expect (empty? (r/foreign-append!
+                                     item-depot
+                                     (sut/->AddTags item-id ["#costco" "#whole_foods"]))))
+
+                    (expect (empty? (r/foreign-append!
+                                     item-depot
+                                     (sut/->RemoveTags item-id ["#costco"]))))))
+              (it "should update when the item was purchased for an existing item"
+                  (let [shopping-list-depot (depot @ipc "*shopping-list-depot")
+                        item-depot (depot @ipc "*item-depot")
+                        items (pstate @ipc "$$items")
+                        {list-id "shopping-list"} (r/foreign-append!
+                                                   shopping-list-depot
+                                                   (sut/map->ShoppingList
+                                                    {:list-id (random-uuid)}))
+                        {item-id "shopping-list"} (r/foreign-append!
+                                                   item-depot
+                                                   (sut/map->Item
+                                                    {:list-id list-id
+                                                     :item-id (random-uuid)}))]
+
+                    (expect (#{:success} (get (r/foreign-append!
+                                               item-depot
+                                               (sut/->PurchasedOn item-id "2025-01-01"))
+                                              "shopping-list")))
+                    (expect
+                     (= "2025-01-01"
+                        (r/foreign-select-one
+                         [(rp/keypath item-id :last-purchased)] items)))))
+              (it "should not update purchase date for an item that doesn't exist"
+                  (let [shopping-list-depot (depot @ipc "*shopping-list-depot")
+                        item-depot (depot @ipc "*item-depot")
+                        items (pstate @ipc "$$items")
+                        {list-id "shopping-list"} (r/foreign-append!
+                                                   shopping-list-depot
+                                                   (sut/map->ShoppingList
+                                                    {:list-id (random-uuid)}))
+                        item-id (random-uuid)]
+
+                    (expect (empty? (r/foreign-append!
+                                     item-depot
+                                     (sut/->PurchasedOn item-id "2025-01-01"))))))
+              (it "should delete an item"
+                  (let [shopping-list-depot (depot @ipc "*shopping-list-depot")
+                        item-depot (depot @ipc "*item-depot")
+                        items (pstate @ipc "$$items")
+                        tags (pstate @ipc "$$tags")
+                        {list-id "shopping-list"} (r/foreign-append!
+                                                   shopping-list-depot
+                                                   (sut/map->ShoppingList
+                                                    {:list-id (random-uuid)}))
+                        {item-id "shopping-list"} (r/foreign-append!
+                                                   item-depot
+                                                   (sut/map->Item
+                                                    {:list-id list-id
+                                                     :item-id (random-uuid)}))]
+                    (r/foreign-append! item-depot
+                                       (sut/->AddTags item-id ["#costco" "#whole_foods"]))
+                    (expect
+                     (r/foreign-select [(rp/keypath item-id) rp/NONE?] items))
+                    (expect
+                     (r/foreign-select [(rp/keypath "#costco") rp/NONE?] tags))
+                    (expect
+                     (r/foreign-select [(rp/keypath "#whole_foods") rp/NONE?] tags)))))))
