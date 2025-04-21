@@ -17,6 +17,12 @@
 (defrecord RemoveSubscriber [id subscriber])
 (defrecord DeleteShoppingList [id])
 
+(defn create-shopping-list
+  ([id]
+   (create-shopping-list id nil nil))
+  ([id name author]
+   (->ShoppingList id name author)))
+
 (defn name-edit [value]
   (->ShoppingListEdit :name value))
 
@@ -37,8 +43,11 @@
 (defrecord RemoveTags [id tags])
 (defrecord DeleteItem [id])
 
-(defn create-item [id list-id description notes quantity]
-  (->Item id list-id description notes quantity))
+(defn create-item
+  ([id list-id]
+   (create-item id list-id nil nil nil))
+  ([id list-id description notes quantity]
+   (->Item id list-id description notes quantity)))
 
 (defn description-edit [value]
   (->ItemEdit :description value))
@@ -68,7 +77,8 @@
                                            {:id ListID
                                             :name String
                                             :author String
-                                            :subscribers (r/set-schema String)})})
+                                            :subscribers (r/set-schema String)
+                                            :items (r/vector-schema ItemID)})})
 
     (r/declare-pstate s $$items {ItemID
                                  (r/fixed-keys-schema
@@ -81,7 +91,6 @@
                                    :list-id ListID})})
 
     (r/declare-pstate s $$tags {String (r/set-schema ItemID {:subindex? true})})
-    ;; TODO: Sanity check inputs
     (r/<<sources s
                  (r/source> *shopping-list-depot :> *list)
                  (r/<<subsource *list
@@ -91,7 +100,8 @@
                                                      (rp/termval {:id *id
                                                                   :name *name
                                                                   :author *author
-                                                                  :subscribers #{}})] $$shopping-lists)
+                                                                  :subscribers #{}
+                                                                  :items []})] $$shopping-lists)
                                 (r/ack-return> *id)
 
                                 (r/case> DeleteShoppingList)
@@ -119,6 +129,8 @@
                                 (r/|hash *list-id)
                                 (r/local-select> [(rp/keypath *list-id)] $$shopping-lists :> *list)
                                 (r/<<if *list
+                                        (r/local-transform> [(rp/keypath *list-id) :items rp/AFTER-ELEM
+                                                             (rp/termval *id)] $$shopping-lists)
                                         (r/|hash *id)
                                         (r/local-transform> [(rp/keypath *id)
                                                              (rp/termval {:list-id *list-id
