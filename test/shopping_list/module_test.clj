@@ -6,7 +6,8 @@
    [com.rpl.rama :as r]
    [com.rpl.rama.path :as rp]
    [com.rpl.rama.test :as rtest]
-   [clojure.core.match :refer [match]]))
+   [clojure.core.match :refer [match]]
+   [clj-ulid :as ulid]))
 
 (defn launch! [ipc]
   (let [threads (+ (rand-int 7) 2)
@@ -18,6 +19,12 @@
     (r/get-module-name sut/Module)))
 
 (def ipc (atom nil))
+
+(defn gen-list-id []
+  (ulid/ulid))
+
+(defn gen-item-id []
+  (ulid/ulid))
 
 #_(defn test-cluster [f]
     (reset! ipc (rtest/create-ipc))
@@ -52,11 +59,11 @@
                         {list-id "shopping-list"} (r/foreign-append!
                                                    shopping-list-depot
                                                    (sut/map->ShoppingList
-                                                    {:list-id (random-uuid)
+                                                    {:id (gen-list-id)
                                                      :name "Hadil's List"
                                                      :author "Hadil"}))]
                     (expect
-                     (= {:list-id list-id
+                     (= {:id list-id
                          :name "Hadil's List"
                          :author "Hadil"
                          :subscribers #{}}
@@ -67,14 +74,14 @@
                         {list-id "shopping-list"} (r/foreign-append!
                                                    shopping-list-depot
                                                    (sut/map->ShoppingList
-                                                    {:list-id (random-uuid)
+                                                    {:id (gen-list-id)
                                                      :name "Hadil's List"
                                                      :author "Hadil"}))]
                     (r/foreign-append!
                      shopping-list-depot
                      (sut/->ShoppingListEdits list-id [(sut/name-edit "Julia's List") (sut/author-edit "Julia")]))
                     (expect
-                     (= {:list-id list-id
+                     (= {:id list-id
                          :name "Julia's List"
                          :author "Julia"
                          :subscribers #{}}
@@ -86,7 +93,7 @@
                      shopping-list-depot
                      (sut/add-subscriber list-id "Emilee"))
                     (expect
-                     (= {:list-id list-id
+                     (= {:id list-id
                          :name "Julia's List"
                          :author "Julia"
                          :subscribers #{"Emilee" "Hadil"}}
@@ -95,7 +102,7 @@
                      shopping-list-depot
                      (sut/remove-subecriber list-id "Emilee"))
                     (expect
-                     (= {:list-id list-id
+                     (= {:id list-id
                          :name "Julia's List"
                          :author "Julia"
                          :subscribers #{"Hadil"}}
@@ -106,7 +113,7 @@
                         {list-id "shopping-list"} (r/foreign-append!
                                                    shopping-list-depot
                                                    (sut/map->ShoppingList
-                                                    {:list-id (random-uuid)
+                                                    {:id (gen-list-id)
                                                      :name "Hadil's List"
                                                      :author "Hadil"}))]
                     (r/foreign-append!
@@ -128,8 +135,8 @@
                         {item-id "shopping-list"} (r/foreign-append!
                                                    item-depot
                                                    (sut/map->Item
-                                                    {:list-id (random-uuid)
-                                                     :item-id (random-uuid)}))]
+                                                    {:list-id (gen-list-id)
+                                                     :id (gen-item-id)}))]
                     (expect
                      (nil? item-id))))
               (it "should create an item for an existing shopping list"
@@ -139,18 +146,18 @@
                         {list-id "shopping-list"} (r/foreign-append!
                                                    shopping-list-depot
                                                    (sut/map->ShoppingList
-                                                    {:list-id (random-uuid)}))
+                                                    {:id (gen-list-id)}))
                         {item-id "shopping-list"} (r/foreign-append!
                                                    item-depot
                                                    (sut/map->Item
                                                     {:list-id list-id
-                                                     :item-id (random-uuid)
+                                                     :id (gen-item-id)
                                                      :description "Food"
                                                      :notes "Delicious"
                                                      :quantity 5}))]
                     (expect
                      (= {:list-id list-id
-                         :item-id item-id
+                         :id item-id
                          :description "Food"
                          :notes "Delicious"
                          :quantity 5
@@ -163,12 +170,12 @@
                         {list-id "shopping-list"} (r/foreign-append!
                                                    shopping-list-depot
                                                    (sut/map->ShoppingList
-                                                    {:list-id (random-uuid)}))
+                                                    {:id (gen-list-id)}))
                         {item-id "shopping-list"} (r/foreign-append!
                                                    item-depot
                                                    (sut/map->Item
                                                     {:list-id list-id
-                                                     :item-id (random-uuid)
+                                                     :id (gen-item-id)
                                                      :description "Food"
                                                      :notes "Delicious"
                                                      :quantity 5}))
@@ -179,7 +186,7 @@
                     (expect (#{:success} status))
                     (expect
                      (= {:list-id list-id
-                         :item-id item-id
+                         :id item-id
                          :description "More Food"
                          :notes "Delicious"
                          :quantity 10
@@ -189,7 +196,7 @@
                   (let [item-depot (depot @ipc "*item-depot")]
                     (expect
                      (empty? (r/foreign-append! item-depot
-                                                (sut/->ItemEdits (random-uuid) [(sut/description-edit "won't work")]))))))
+                                                (sut/->ItemEdits (gen-item-id) [(sut/description-edit "won't work")]))))))
               (it "should add and remove tags from an existing item"
                   (let [shopping-list-depot (depot @ipc "*shopping-list-depot")
                         item-depot (depot @ipc "*item-depot")
@@ -197,12 +204,12 @@
                         {list-id "shopping-list"} (r/foreign-append!
                                                    shopping-list-depot
                                                    (sut/map->ShoppingList
-                                                    {:list-id (random-uuid)}))
+                                                    {:id (gen-list-id)}))
                         {item-id "shopping-list"} (r/foreign-append!
                                                    item-depot
                                                    (sut/map->Item
                                                     {:list-id list-id
-                                                     :item-id (random-uuid)
+                                                     :id (gen-item-id)
                                                      :description "Food"
                                                      :notes "Delicious"
                                                      :quantity 5}))]
@@ -212,7 +219,7 @@
                                               "shopping-list")))
                     (expect
                      (= {:list-id list-id
-                         :item-id item-id
+                         :id item-id
                          :description "Food"
                          :notes "Delicious"
                          :quantity 5
@@ -224,7 +231,7 @@
                                               "shopping-list")))
                     (expect
                      (= {:list-id list-id
-                         :item-id item-id
+                         :id item-id
                          :description "Food"
                          :notes "Delicious"
                          :quantity 5
@@ -237,8 +244,8 @@
                         {list-id "shopping-list"} (r/foreign-append!
                                                    shopping-list-depot
                                                    (sut/map->ShoppingList
-                                                    {:list-id (random-uuid)}))
-                        item-id (random-uuid)]
+                                                    {:id (gen-list-id)}))
+                        item-id (gen-item-id)]
 
                     (expect (empty? (r/foreign-append!
                                      item-depot
@@ -254,12 +261,12 @@
                         {list-id "shopping-list"} (r/foreign-append!
                                                    shopping-list-depot
                                                    (sut/map->ShoppingList
-                                                    {:list-id (random-uuid)}))
+                                                    {:id (gen-list-id)}))
                         {item-id "shopping-list"} (r/foreign-append!
                                                    item-depot
                                                    (sut/map->Item
                                                     {:list-id list-id
-                                                     :item-id (random-uuid)}))]
+                                                     :id (gen-item-id)}))]
 
                     (expect (#{:success} (get (r/foreign-append!
                                                item-depot
@@ -276,8 +283,8 @@
                         {list-id "shopping-list"} (r/foreign-append!
                                                    shopping-list-depot
                                                    (sut/map->ShoppingList
-                                                    {:list-id (random-uuid)}))
-                        item-id (random-uuid)]
+                                                    {:id (gen-list-id)}))
+                        item-id (gen-item-id)]
 
                     (expect (empty? (r/foreign-append!
                                      item-depot
@@ -290,12 +297,12 @@
                         {list-id "shopping-list"} (r/foreign-append!
                                                    shopping-list-depot
                                                    (sut/map->ShoppingList
-                                                    {:list-id (random-uuid)}))
+                                                    {:id (gen-list-id)}))
                         {item-id "shopping-list"} (r/foreign-append!
                                                    item-depot
                                                    (sut/map->Item
                                                     {:list-id list-id
-                                                     :item-id (random-uuid)}))]
+                                                     :id (gen-item-id)}))]
                     (r/foreign-append! item-depot
                                        (sut/->AddTags item-id ["#costco" "#whole_foods"]))
                     (expect

@@ -49,7 +49,7 @@ lists with others.
 - Quantity: Integer, optional
 - Tags: Set of Tag
 - Last Bought: Date
-** Tag: String (all lowercase keep track of unique tags)
+** Tag: String
 
 * Events
 1. create list (list-id, name, author)
@@ -66,3 +66,17 @@ lists with others.
 1. Get all items by tag
 1. Get all items by name
 1. Get item by item-id
+1. Use Levenshtein distance for fuzzy matching of names and tags
+
+
+* Implementation
+
+- Rama
+- Server between Rama and mobile
+- Mobile app
+
+
+* TODO Add clj-reload to dynamically loading REPL
+* TODO Use ULID instrad of UUID -> IDs will be strings
+* DONE Add fuzzy matching library
+* TODO Rama queries
