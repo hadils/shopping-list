@@ -3,9 +3,10 @@
    [com.rpl.rama :as r]
    [com.rpl.rama.path :as rp]
    [com.rpl.rama.aggs :as aggs]
-   [com.rpl.rama.ops :as ops])
+   [com.rpl.rama.ops :as ops]
+   [shopping-list.datetime :as dt])
   (:import
-   (java.util UUID)))
+   (java.time Instant)))
 
 (def ListID String)
 (def ItemID String)
@@ -78,7 +79,9 @@
                                             :name String
                                             :author String
                                             :subscribers (r/set-schema String)
-                                            :items (r/vector-schema ItemID)})})
+                                            :items (r/vector-schema ItemID)
+                                            :created-at Instant
+                                            :updated-at Instant})})
 
     (r/declare-pstate s $$items {ItemID
                                  (r/fixed-keys-schema
@@ -88,7 +91,9 @@
                                    :quantity Long
                                    :tags (r/set-schema String)
                                    :last-purchased String
-                                   :list-id ListID})})
+                                   :list-id ListID
+                                   :created-at Instant
+                                   :updated-at Instant})})
 
     (r/declare-pstate s $$tags {String (r/set-schema ItemID {:subindex? true})})
     (r/<<sources s
@@ -96,36 +101,62 @@
                  (r/<<subsource *list
                                 (r/case> ShoppingList)
                                 (identity *list :> {:keys [*id *name *author]})
+                                (dt/now :> *now)
                                 (r/local-transform> [(rp/keypath *id)
                                                      (rp/termval {:id *id
                                                                   :name *name
                                                                   :author *author
                                                                   :subscribers #{}
-                                                                  :items []})] $$shopping-lists)
+                                                                  :items []
+                                                                  :created-at *now
+                                                                  :updated-at *now})] $$shopping-lists)
                                 (r/ack-return> *id)
 
                                 (r/case> DeleteShoppingList)
                                 (identity *list :> {:keys [*id]})
+                                (dt/now :> *now)
                                 (r/local-transform> [(rp/keypath *id)
                                                      r/NONE>] $$shopping-lists)
 
                                 (r/case> ShoppingListEdits)
                                 (identity *list :> {:keys [*id *edits]})
+                                (dt/now :> *now)
                                 (ops/explode *edits :> {:keys [*field *value]})
-                                (r/local-transform> [(rp/keypath *id *field) (rp/termval *value)] $$shopping-lists)
+                                (r/local-transform> [(rp/keypath *id)
+                                                     (rp/multi-path
+                                                      [(rp/keypath *field)
+                                                       (rp/termval *value)]
+                                                      [(rp/keypath :updated-at)
+                                                       (rp/termval *now)])] $$shopping-lists)
 
                                 (r/case> AddSubscriber)
                                 (identity *list :> {:keys [*id *subscriber]})
-                                (r/local-transform> [(rp/keypath *id :subscribers) rp/NONE-ELEM (rp/termval *subscriber)] $$shopping-lists)
+                                (dt/now :> *now)
+                                (r/local-transform> [(rp/keypath *id)
+                                                     (rp/multi-path
+                                                      [(rp/keypath :subscribers)
+                                                       rp/NONE-ELEM
+                                                       (rp/termval *subscriber)]
+                                                      [(rp/keypath :updated-at)
+                                                       (rp/termval *now)])]
+                                                    $$shopping-lists)
 
                                 (r/case> RemoveSubscriber)
                                 (identity *list :> {:keys [*id *subscriber]})
-                                (r/local-transform> [(rp/keypath *id :subscribers) (rp/set-elem *subscriber) r/NONE>] $$shopping-lists))
+                                (dt/now :> *now)
+                                (r/local-transform> [(rp/keypath *id)
+                                                     (rp/multi-path
+                                                      [(rp/keypath :subscribers)
+                                                       (rp/set-elem *subscriber)
+                                                       r/NONE>]
+                                                      [(rp/keypath :updated-at)
+                                                       (rp/termval *now)])] $$shopping-lists))
 
                  (r/source> *item-depot :> *item)
                  (r/<<subsource *item
                                 (r/case> Item)
                                 (identity *item :> {:keys [*id *list-id *description *notes *quantity]})
+                                (dt/now :> *now)
                                 (r/|hash *list-id)
                                 (r/local-select> [(rp/keypath *list-id)] $$shopping-lists :> *list)
                                 (r/<<if *list
@@ -143,6 +174,7 @@
 
                                 (r/case> ItemEdits)
                                 (identity *item :> {:keys [*id *edits]})
+                                (dt/now :> *now)
                                 (r/local-select> [(rp/keypath *id)] $$items :> *item)
                                 (r/<<if *item
                                         (ops/explode *edits :> {:keys [*field *value]})
@@ -152,6 +184,7 @@
 
                                 (r/case> AddTags)
                                 (identity *item :> {:keys [*id *tags]})
+                                (dt/now :> *now)
                                 (r/local-select> [(rp/keypath *id)] $$items :> *item)
                                 (r/<<if *item
                                         (ops/explode *tags :> *tag)
@@ -167,6 +200,7 @@
 
                                 (r/case> RemoveTags)
                                 (identity *item :> {:keys [*id *tags]})
+                                (dt/now :> *now)
                                 (r/local-select> [(rp/keypath *id)] $$items :> *item)
                                 (r/<<if *item
                                         (ops/explode *tags :> *tag)
@@ -182,6 +216,7 @@
 
                                 (r/case> PurchasedOn)
                                 (identity *item :> {:keys [*id *date]})
+                                (dt/now :> *now)
                                 (r/local-select> [(rp/keypath *id)] $$items :> *item)
                                 (r/<<if *item
                                         (r/local-transform> [(rp/keypath *id :last-purchased)
@@ -190,6 +225,7 @@
 
                                 (r/case> DeleteItem)
                                 (identity *item :> {:keys [*id]})
+                                (dt/now :> *now)
                                 (r/local-select> [(rp/keypath *id)] $$items :> *item)
                                 (r/<<if *item
                                         (identity *item :> {:keys [*tags]})

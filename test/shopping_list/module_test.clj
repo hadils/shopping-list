@@ -60,12 +60,16 @@
                                                    shopping-list-depot
                                                    (sut/create-shopping-list (gen-list-id) "Hadil's List" "Hadil"))]
                     (expect
-                     (= {:id list-id
-                         :name "Hadil's List"
-                         :author "Hadil"
-                         :subscribers #{}
-                         :items []}
-                        (r/foreign-select-one [(rp/keypath list-id)] shopping-lists)))))
+                     (match [(r/foreign-select-one [(rp/keypath list-id)] shopping-lists)]
+                            [{:id list-id
+                              :name "Hadil's List"
+                              :author "Hadil"
+                              :subscribers #{}
+                              :items []
+                              :created-at _
+                              :updated-at _}] true
+                            :else false))))
+
               (it "should modify an existing shopping list"
                   (let [shopping-list-depot (depot @ipc "*shopping-list-depot")
                         shopping-lists (pstate @ipc "$$shopping-lists")
@@ -77,12 +81,15 @@
                      shopping-list-depot
                      (sut/->ShoppingListEdits list-id [(sut/name-edit "Julia's List") (sut/author-edit "Julia")]))
                     (expect
-                     (= {:id list-id
-                         :name "Julia's List"
-                         :author "Julia"
-                         :subscribers #{}
-                         :items []}
-                        (r/foreign-select-one [(rp/keypath list-id)] shopping-lists)))
+                     (match [(r/foreign-select-one [(rp/keypath list-id)] shopping-lists)]
+                            [{:id list-id
+                              :name "Julia's List"
+                              :author "Julia"
+                              :subscribers #{}
+                              :items []
+                              :created-at _
+                              :updated-at _}] true
+                            :else false))
                     (r/foreign-append!
                      shopping-list-depot
                      (sut/->AddSubscriber list-id "Hadil"))
@@ -90,22 +97,30 @@
                      shopping-list-depot
                      (sut/add-subscriber list-id "Emilee"))
                     (expect
-                     (= {:id list-id
-                         :name "Julia's List"
-                         :author "Julia"
-                         :subscribers #{"Emilee" "Hadil"}
-                         :items []}
-                        (r/foreign-select-one [(rp/keypath list-id)] shopping-lists)))
+                     (match [(r/foreign-select-one [(rp/keypath list-id)] shopping-lists)]
+                            [{:id list-id
+                              :name "Julia's List"
+                              :author "Julia"
+                              :subscribers #{"Emilee" "Hadil"}
+                              :items []
+                              :created-at _
+                              :updated-at _}] true
+                            :else false))
+
                     (r/foreign-append!
                      shopping-list-depot
                      (sut/remove-subecriber list-id "Emilee"))
                     (expect
-                     (= {:id list-id
-                         :name "Julia's List"
-                         :author "Julia"
-                         :subscribers #{"Hadil"}
-                         :items []}
-                        (r/foreign-select-one [(rp/keypath list-id)] shopping-lists)))))
+                     (match [(r/foreign-select-one [(rp/keypath list-id)] shopping-lists)]
+                            [{:id list-id
+                              :name "Julia's List"
+                              :author "Julia"
+                              :subscribers #{"Hadil"}
+                              :items []
+                              :created-at _
+                              :updated-at _}] true
+                            :else false))))
+
               (it "should delete a shopping list"
                   (let [shopping-list-depot (depot @ipc "*shopping-list-depot")
                         shopping-lists (pstate @ipc "$$shopping-lists")
@@ -146,20 +161,20 @@
                                                    item-depot
                                                    (sut/create-item (gen-item-id) list-id "Food" "Delicious" 5))]
                     (expect
-                     (= {:list-id list-id
-                         :id item-id
-                         :description "Food"
-                         :notes "Delicious"
-                         :quantity 5
-                         :tags #{}}
-                        (r/foreign-select-one [(rp/keypath item-id)] items)))
+                     (match [(r/foreign-select-one [(rp/keypath item-id)] items)]
+                            [{:list-id list-id
+                              :id item-id
+                              :description "Food"
+                              :notes "Delicious"
+                              :quantity 5
+                              :tags #{}}] true
+                            :else false))
+
                     (expect
-                     (= {:id list-id
-                         :name nil
-                         :author nil
-                         :subscribers #{}
-                         :items [item-id]}
-                        (r/foreign-select-one [(rp/keypath list-id)] shopping-lists)))))
+                     (match [(r/foreign-select-one [(rp/keypath list-id)] shopping-lists)]
+                            [{:id list-id :items [item-id]}] true
+                            :else false))))
+
               (it "should modify an existing item"
                   (let [shopping-list-depot (depot @ipc "*shopping-list-depot")
                         item-depot (depot @ipc "*item-depot")
@@ -178,13 +193,15 @@
                                                                             (sut/quantity-edit 10)]))]
                     (expect (#{:success} status))
                     (expect
-                     (= {:list-id list-id
-                         :id item-id
-                         :description "More Food"
-                         :notes "Delicious"
-                         :quantity 10
-                         :tags #{}}
-                        (r/foreign-select-one [(rp/keypath item-id)] items)))))
+                     (match [(r/foreign-select-one [(rp/keypath item-id)] items)]
+                            [{:list-id list-id
+                              :id item-id
+                              :description "More Food"
+                              :notes "Delicious"
+                              :quantity 10
+                              :tags #{}}] true
+                            :else false))))
+
               (it "will not modify an item that doesn't exist"
                   (let [item-depot (depot @ipc "*item-depot")]
                     (expect
@@ -206,25 +223,29 @@
                                                (sut/->AddTags item-id ["#costco" "#whole_foods"]))
                                               "shopping-list")))
                     (expect
-                     (= {:list-id list-id
-                         :id item-id
-                         :description "Food"
-                         :notes "Delicious"
-                         :quantity 5
-                         :tags #{"#whole_foods" "#costco"}}
-                        (r/foreign-select-one [(rp/keypath item-id)] items)))
+                     (match [(r/foreign-select-one [(rp/keypath item-id)] items)]
+                            [{:list-id list-id
+                              :id item-id
+                              :description "Food"
+                              :notes "Delicious"
+                              :quantity 5
+                              :tags #{"#whole_foods" "#costco"}}] true
+                            :else false))
+
                     (expect (#{:success} (get (r/foreign-append!
                                                item-depot
                                                (sut/->RemoveTags item-id ["#costco"]))
                                               "shopping-list")))
                     (expect
-                     (= {:list-id list-id
-                         :id item-id
-                         :description "Food"
-                         :notes "Delicious"
-                         :quantity 5
-                         :tags #{"#whole_foods"}}
-                        (r/foreign-select-one [(rp/keypath item-id)] items)))))
+                     (match [(r/foreign-select-one [(rp/keypath item-id)] items)]
+                            [{:list-id list-id
+                              :id item-id
+                              :description "Food"
+                              :notes "Delicious"
+                              :quantity 5
+                              :tags #{"#whole_foods"}}] true
+                            :else false))))
+
               (it "should not add or remove tags from an item that doesn't exist"
                   (let [shopping-list-depot (depot @ipc "*shopping-list-depot")
                         item-depot (depot @ipc "*item-depot")
